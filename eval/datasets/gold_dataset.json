@@ -1,0 +1,17 @@
+[
+    {
+        "question": "What are the risk factors for Apple?",
+        "ground_truth": "Risks include supply chain issues, competition, and regulatory changes.",
+        "type": "rag"
+    },
+    {
+        "question": "Who is the CEO of Apple?",
+        "ground_truth": "Tim Cook is the CEO.",
+        "type": "graph"
+    },
+    {
+        "question": "What is the Cumulative Abnormal Return for AAPL recently?",
+        "ground_truth": "The CAR is positive.",
+        "type": "ds"
+    }
+]
