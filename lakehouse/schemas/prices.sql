@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS prices (
     close DOUBLE,
     volume BIGINT,
     adjusted_close DOUBLE,
+    daily_return DOUBLE,
+    volatility_30d DOUBLE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (ticker, date)
 );

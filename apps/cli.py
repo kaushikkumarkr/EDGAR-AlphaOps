@@ -129,7 +129,7 @@ def main():
             # Get latest 10-K or 10-Q ingestion record
             # We look at filings table.
             # Ideally we check what we downloaded in Sprint 1.
-            filing_row = conn.execute(f"SELECT accession_number FROM filings WHERE cik='{cik}' ORDER BY filing_date DESC LIMIT 1").fetchone()
+            filing_row = conn.execute(f"SELECT accession_number, filing_date, form_type, report_period FROM filings WHERE cik='{cik}' ORDER BY filing_date DESC LIMIT 1").fetchone()
             if not filing_row:
                 logging.warning(f"No filings found in DB for {t}. Run ingest-rss first or wait for history backfill.")
                 # Fallback: Try to ingest RSS specifically for this ticker? 
@@ -138,6 +138,9 @@ def main():
                 continue
                 
             accession = filing_row[0]
+            filing_date = str(filing_row[1]) if filing_row[1] else None
+            form_type = filing_row[2]
+            report_period = str(filing_row[3]) if filing_row[3] else None
             
             # Directory: data/filings/{cik}/{accession}/
             base_dir = f"data/filings/{cik}/{accession}"
@@ -184,9 +187,73 @@ def main():
             vectors = embedder.embed_texts(chunks)
             
             # Index
-            payloads = [{"text": c, "cik": cik, "ticker": t, "accession": accession, "chunk_index": i} for i, c in enumerate(chunks)]
+            payloads = [
+                {
+                    "text": c, 
+                    "cik": cik, 
+                    "ticker": t, 
+                    "accession": accession, 
+                    "chunk_index": i,
+                    "filing_date": filing_date,
+                    "form": form_type,
+                    "period": report_period
+                } 
+                for i, c in enumerate(chunks)
+            ]
             store.upsert_batch(vectors, payloads)
             
+        conn.close()
+
+    elif command == "compute-event-study":
+        from ds.event_study.engine import EventStudyEngine
+        tickers = _parse_tickers_arg()
+        engine = EventStudyEngine()
+        for t in tickers:
+            logging.info(f"Running event study for {t}...")
+            engine.run_study(t)
+
+    elif command == "compute-risk":
+        from ds.risk_model.engine import RiskEngine
+        tickers = _parse_tickers_arg()
+        engine = RiskEngine()
+        for t in tickers:
+            engine.run_risk_analysis(t)
+
+    elif command == "build-graph":
+        from rag.graphrag.extractor import GraphExtractor
+        from pipelines.rag.processor import DocumentProcessor
+        import os
+        
+        tickers = _parse_tickers_arg()
+        extractor = GraphExtractor()
+        processor = DocumentProcessor()
+        db = Database()
+        conn = db.get_connection()
+        
+        for t in tickers:
+            logging.info(f"Building graph for {t}...")
+            # Get latest filing
+            res = conn.execute("SELECT cik FROM companies WHERE ticker = ?", [t]).fetchone()
+            if not res: continue
+            cik = res[0]
+            
+            filing_row = conn.execute(f"SELECT accession_number, filing_date FROM filings WHERE cik='{cik}' ORDER BY filing_date DESC LIMIT 1").fetchone()
+            if not filing_row:
+                logging.warning(f"No filings for {t}")
+                continue
+            
+            accession = filing_row[0]
+            base_dir = f"data/filings/{cik}/{accession}"
+            primary_path = f"{base_dir}/primary_doc.html"
+            
+            if os.path.exists(primary_path):
+                with open(primary_path, "r", encoding="utf-8") as f:
+                     html = f.read()
+                chunks = processor.process_html(html)
+                extractor.process_document(cik, chunks)
+                logging.info(f"Graph extraction complete for {t}")
+            else:
+                logging.warning(f"Primary doc not found for {t} ({accession})")
         conn.close()
 
     else:

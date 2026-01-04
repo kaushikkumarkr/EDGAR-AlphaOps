@@ -18,24 +18,31 @@ graph TD
         MarketFetcher -->|OHLCV| SQL
     end
 
-    subgraph "Feature Store"
-        SQL -->|Joins| Features["Financial Features"]
+    subgraph "Data Science Engine"
+        SQL -->|Prices + Events| EventStudy["Event Study (CAR)"]
+        SQL -->|Prices + VIX| RiskModel["Risk Engine (VaR/Regime)"]
+        EventStudy --> SQL
+        RiskModel --> SQL
     end
 
     subgraph "RAG Pipeline"
         HTML --> Resolver
         Resolver --> Processor["Cleaner & Chunker"]
         Processor --> Embedder["MiniLM-L6-v2"]
+        Processor --> GraphExtractor["LLM Graph Extractor"]
         Embedder --> Vector["Qdrant (Vectors)"]
+        GraphExtractor --> Graph["DuckDB (Graph Tables)"]
     end
 
     subgraph "Agentic Analyst"
         User --> Streamlit
-        Streamlit --> Agent["LangGraph Agent"]
-        Agent -->|Route| Tool1["Financial Tool (SQL)"]
-        Agent -->|Route| Tool2["RAG Tool (Vector)"]
-        Tool1 --> SQL
-        Tool2 --> Vector
+        Streamlit --> Agent["LangGraph Router"]
+        Agent -->|Text Query| ToolVector["Search SEC Docs"]
+        Agent -->|Graph Query| ToolGraph["Search Knowledge Graph"]
+        Agent -->|Quant Query| ToolDS["Get Financial Metrics"]
+        ToolVector --> Vector
+        ToolGraph --> Graph
+        ToolDS --> SQL
         Agent -->|LLM| MLX["Local Llama 3.2"]
     end
 ```
@@ -44,7 +51,10 @@ graph TD
 - **Lakehouse:** DuckDB (SQL + Parquet)
 - **Vector Store:** Qdrant
 - **Agent Orchestration:** LangGraph, LangChain
+- **GraphRAG:** NetworkX / SQL Adjacency
+- **DS Engine:** Pandas, Scipy (Regression, VaR)
 - **LLM Serving:** MLX (Local on Apple Silicon)
+- **Eval:** RAGAS (Lite)
 - **Frontend:** Streamlit
 - **Observability:** Phoenix (Tracing)
 
@@ -81,35 +91,48 @@ make serve_llm
 # This downloads/serves mlx-community/Llama-3.2-3B-Instruct-4bit on port 8080
 ```
 
-### 4. Data Ingestion (Demo)
-Ingest sample data for analysis (e.g., AVAH, AAPL, MSFT):
+### 4. Data Ingestion & Indexing
+Ingest sample data for analysis (e.g., AAPL):
 ```bash
-# Ingest Historical Market Data & XBRL Facts
-make ingest_market && make build_features
+# 1. Market Data & XBRL
+make ingest_market TICKERS=AAPL,SPY,^VIX
+make ingest_xbrl TICKERS=AAPL
 
-# Ingest & Index SEC Filing for RAG (Demo: AVAH)
-make ingest_rag
+# 2. RAG Pipelines (Vector + Graph)
+make build_index TICKERS=AAPL
+make build_graph TICKERS=AAPL
 ```
 
-### 5. Launch Analyst UI
+### 5. Run Data Science Engines
+Compute quantitative metrics:
+```bash
+make compute_ds TICKERS=AAPL    # Event Studies (Alpha/Beta/CAR)
+make compute_risk TICKERS=AAPL  # Risk Models (VaR/Regime)
+```
+
+### 6. Launch Analyst UI
 ```bash
 make run_ui
 # Access at http://localhost:8501
 ```
 
-## 🧪 Verification
-Run the end-to-end integration test:
+## 🧪 Evaluation
+Run the RAGAS-based evaluation suite on the Gold Dataset:
 ```bash
-python tests/test_agent_integrated.py
+make eval
+# Output: artifacts/eval/report.json
 ```
 
 ## 📂 Project Structure
 ```
 /apps          # CLI and Streamlit UI
 /agents        # LangGraph Agent logic
-/pipelines     # Ingestion (SEC, Market, RAG)
-/lakehouse     # DuckDB schemas and Feature logic
-/data          # Local data storage (DuckDB, Filings)
+/ds            # Data Science Engines (Event Study, Risk)
+/rag           # RAG Pipelines (Vector, GraphRAG)
+/pipelines     # Ingestion (SEC, Market)
+/lakehouse     # DuckDB schemas
+/eval          # Evaluation Datasets & Pipelines
+/observability # Tracing Config
 /tests         # Test suite
 ```
 

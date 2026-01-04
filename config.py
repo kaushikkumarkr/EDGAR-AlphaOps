@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     
     # Observability
     PHOENIX_COLLECTOR_ENDPOINT: str = "http://localhost:4317"
+
+    # LLM
+    OPENAI_BASE_URL: str = "http://localhost:8080/v1"
+    OPENAI_API_KEY: str = "EMPTY"
+    MODEL_NAME: str = "mlx-community/Llama-3.2-3B-Instruct-4bit"
     
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
