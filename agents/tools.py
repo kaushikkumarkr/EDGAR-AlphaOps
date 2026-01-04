@@ -69,9 +69,57 @@ def search_sec_docs(query: str, ticker: Optional[str] = None) -> str:
         text = r['text']
         score = r['score']
         t_ticker = meta.get('ticker', 'Unknown')
-        context += f"--- [Ticker: {t_ticker}, Score: {score:.2f}] ---\n{text}\n\n"
+        filing_date = meta.get('filing_date', 'N/A')
+        form = meta.get('form', 'Doc')
+        # V2 Requirement: [Source: Filename (Frame)] or similar
+        # We'll use: [Source: {Form} {Date} (Score: {score:.2f})]
+        context += f"--- [Source: {t_ticker} {form} {filing_date} | Score: {score:.2f}] ---\n{text}\n\n"
         
     if not context:
         return "No relevant SEC documents found."
         
     return context
+
+@tool
+def search_knowledge_graph(query_entities: str) -> str:
+    """
+    Search the knowledge graph for relationships between entities.
+    Input should be a comma-separated list of entity names (e.g. "Apple, Tim Cook, Risk").
+    Use this for questions about "relationships", "entities", "connections", or "graph".
+    """
+    from rag.graphrag.retriever import GraphRetriever
+    retriever = GraphRetriever()
+    
+    # Clean input
+    entities = [e.strip() for e in query_entities.split(",")]
+    return retriever.retrieve_context(entities)
+
+@tool
+def get_financial_metrics(ticker: str) -> str:
+    """
+    Get calculated financial metrics (Event Study CAR, Risk VaR, Volatility Regime) for a ticker.
+    Use this when asked about "risk", "impact", "abnormal returns", "volatility", or "metrics".
+    """
+    conn = Database().get_connection()
+    try:
+        # 1. Event Study (Latest)
+        es_res = conn.execute(f"SELECT event_date, car_value, alpha, beta FROM event_studies WHERE ticker='{ticker}' ORDER BY event_date DESC LIMIT 1").fetchdf()
+        
+        # 2. Risk Metrics (Latest)
+        rm_res = conn.execute(f"SELECT asof_date, volatility_regime, var_95, cvar_95 FROM risk_metrics WHERE ticker='{ticker}' ORDER BY asof_date DESC LIMIT 1").fetchdf()
+        
+        output = []
+        if not es_res.empty:
+            r = es_res.iloc[0]
+            output.append(f"Event Study (Date: {r['event_date']}): CAR={r['car_value']:.4f}, Alpha={r['alpha']:.4f}, Beta={r['beta']:.4f}")
+        
+        if not rm_res.empty:
+            r = rm_res.iloc[0]
+            output.append(f"Risk Metrics (Date: {r['asof_date']}): Regime={r['volatility_regime']}, VaR95={r['var_95']:.2%}, CVaR95={r['cvar_95']:.2%}")
+            
+        if not output:
+             return "No calculated metrics found. Please run 'compute-ds' or 'compute-risk' first."
+             
+        return "\n".join(output)
+    finally:
+        conn.close()

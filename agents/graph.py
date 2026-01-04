@@ -5,46 +5,62 @@ from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 
 from agents.state import AgentState
-from agents.tools import get_financial_metrics, search_sec_docs
+from agents.tools import get_financial_metrics, search_sec_docs, search_knowledge_graph
 from config import get_settings
 
 settings = get_settings()
 
 # Tools list
-tools = [get_financial_metrics, search_sec_docs]
+tools = [get_financial_metrics, search_sec_docs, search_knowledge_graph]
 
 # Model
 # We need an OpenAI compatible model.
-# If using local model (e.g. vLLM serving standard OpenAI API), we set base_url.
-# But settings has SEC_USER_AGENT, not LLM config explicitly yet.
-# Assuming env vars OPENAI_API_KEY and OPENAI_BASE_URL are set or defaults used.
-# For this Sprint, we assume User has OpenAI key or local compatible setup.
-# We will use 'gpt-4o' or 'gpt-3.5-turbo' as default if not local.
 # Using local MLX Server (Llama-3.2-3B-Instruct-4bit or similar)
 llm = ChatOpenAI(
-    base_url="http://localhost:8080/v1",
-    api_key="EMPTY",
-    model="mlx-community/Llama-3.2-3B-Instruct-4bit", # Model name is illustrative for logging
+    base_url=settings.OPENAI_BASE_URL,
+    api_key=settings.OPENAI_API_KEY,
+    model=settings.MODEL_NAME, 
     temperature=0
 ) 
-# Ideally load from settings.
 
 llm_with_tools = llm.bind_tools(tools)
 
 # Nodes
 import json
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, SystemMessage
 
 def agent_node(state: AgentState):
     messages = state['messages']
+    
+    # Prepend System Prompt if not present
+    if not isinstance(messages[0], SystemMessage):
+        system_prompt = SystemMessage(content="""You are an expert financial agent named 'AlphaOps'.
+        You have access to the following tools:
+        1. `search_sec_docs`: For specific claims, facts, segments in SEC filings (10-K, 10-Q).
+        2. `get_financial_metrics`: For quantitative data like Cumulative Abnormal Returns (CAR), Risk (VaR), and Volatility Regimes.
+        3. `search_knowledge_graph`: For exploring relationships between entities (People, Companies, Risks), management structure, and conflicts.
+        
+        ROUTER LOGIC:
+        - If asked about "risk numbers", "impact", "returns", or "volatility", USE `get_financial_metrics`.
+        - If asked about "relationships", "conflicts", "who works with who", or "entity connections", USE `search_knowledge_graph`.
+        - If asked about specific text, policies, or detailed facts in filings, USE `search_sec_docs`.
+        - If the query is complex, you can call multiple tools in sequence.
+        
+        Always cite your sources efficiently.
+        """)
+        messages = [system_prompt] + messages
+        
     response = llm_with_tools.invoke(messages)
     
     # Patch: If local LLM returns raw JSON string instead of tool_calls
-    content = response.content.strip()
-    if not response.tool_calls and content.startswith("{") and "name" in content:
+    import re
+    raw_content = response.content.strip()
+    # Regex to strip all <|...|> tokens and markdown code blocks
+    clean_content = re.sub(r'<\|.*?\|>', '', raw_content)
+    clean_content = clean_content.replace("```json", "").replace("```", "").strip()
+    
+    if not response.tool_calls and clean_content.startswith("{") and "name" in clean_content:
         try:
-            # Clean up potential artifacts
-            clean_content = content.replace("<|eom_id|>", "").replace("<|eot_id|>", "").replace("```json", "").replace("```", "").strip()
             data = json.loads(clean_content)
             if "name" in data and "parameters" in data:
                 # Reconstruct tool call
