@@ -10,33 +10,33 @@
 ```mermaid
 graph TD
     subgraph Ingestion
-        RSS[SEC RSS Feed] --> Watcher
-        API[SEC Data API] --> XBRLFetcher
-        YF[Yahoo Finance] --> MarketFetcher
-        Watcher -->|Downloads| HTML[Raw Filings]
-        XBRLFetcher -->|Facts| SQL[DuckDB (Structured)]
+        RSS["SEC RSS Feed"] --> Watcher
+        API["SEC Data API"] --> XBRLFetcher
+        YF["Yahoo Finance"] --> MarketFetcher
+        Watcher -->|Downloads| HTML["Raw Filings"]
+        XBRLFetcher -->|Facts| SQL["DuckDB (Structured)"]
         MarketFetcher -->|OHLCV| SQL
     end
 
     subgraph "Feature Store"
-        SQL -->|Joins| Features[Financial Features]
+        SQL -->|Joins| Features["Financial Features"]
     end
 
     subgraph "RAG Pipeline"
         HTML --> Resolver
-        Resolver --> Processor[Cleaner & Chunker]
-        Processor --> Embedder[MiniLM-L6-v2]
-        Embedder --> Vector[Qdrant (Vectors)]
+        Resolver --> Processor["Cleaner & Chunker"]
+        Processor --> Embedder["MiniLM-L6-v2"]
+        Embedder --> Vector["Qdrant (Vectors)"]
     end
 
     subgraph "Agentic Analyst"
         User --> Streamlit
-        Streamlit --> Agent[LangGraph Agent]
-        Agent -->|Route| Tool1[Financial Tool (SQL)]
-        Agent -->|Route| Tool2[RAG Tool (Vector)]
+        Streamlit --> Agent["LangGraph Agent"]
+        Agent -->|Route| Tool1["Financial Tool (SQL)"]
+        Agent -->|Route| Tool2["RAG Tool (Vector)"]
         Tool1 --> SQL
         Tool2 --> Vector
-        Agent -->|LLM| MLX[Local Llama 3.2]
+        Agent -->|LLM| MLX["Local Llama 3.2"]
     end
 ```
 
