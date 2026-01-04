@@ -1,0 +1,78 @@
+[project]
+name = "edgar-alphaops"
+version = "0.1.0"
+description = "Agentic Financial Intelligence & Risk Radar"
+authors = [{name = "Antigravity", email = "antigravity@gemini.google.com"}]
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
+    "duckdb>=0.9.2",
+    "pandas>=2.2.0",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.1.0",
+    "langchain>=0.1.0",
+    "langgraph>=0.0.10",
+    "langchain-openai",
+    "langchain-text-splitters",
+    "mlx-lm",
+    "sentence-transformers>=2.2.2",
+    "qdrant-client>=1.7.0",
+    "yfinance>=0.2.36",
+    "beautifulsoup4>=4.12.3",
+    "lxml>=5.1.0",
+    "feedparser>=6.0.10",
+    "python-dotenv>=1.0.1",
+    "requests>=2.31.0",
+    "tenacity>=8.2.3",
+    "streamlit>=1.31.0",
+    "plotly>=5.18.0",
+    "httpx>=0.26.0",
+    "tiktoken>=0.5.2",
+    "arize-phoenix>=2.0.0",
+    "openinference-instrumentation-langchain>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.1.15",
+    "black>=24.1.0",
+    "mypy>=1.8.0",
+    "types-requests",
+    "types-beautifulsoup4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --strict-markers"
+log_cli = true
+log_cli_level = "INFO"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "apps",
+    "pipelines",
+    "lakehouse",
+    "rag",
+    "ds",
+    "agents",
+    "eval",
+    "observability",
+]
