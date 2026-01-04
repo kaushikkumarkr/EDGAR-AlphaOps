@@ -45,6 +45,12 @@ graph TD
         ToolDS --> SQL
         Agent -->|LLM| MLX["Local Llama 3.2"]
     end
+    
+    subgraph "Evaluation & Specs"
+        Eval["RAGAS Suite"] -->|Assess| Agent
+        Eval -->|Judge| MLX
+        Observability["Phoenix Traces"] -.->|Monitor| Agent
+    end
 ```
 
 ## 🛠 Tech Stack
