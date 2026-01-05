@@ -29,54 +29,38 @@ install:
 lint:
 	$(PYTHON) -m ruff check .
 
+# Deliverable Commands
 up:
-	docker-compose up -d
+	docker compose up -d --build
 
 down:
-	docker-compose down
+	docker compose down
 
-# Ingest new filings via RSS (Loop)
 ingest_recent:
-	SEC_USER_AGENT="AlphaOps/0.2 (test@example.com)" $(PYTHON) -m apps.cli ingest-rss
+	@echo "Running Ingestion for $(TICKERS)"
+	SEC_USER_AGENT="AlphaOps/Prod (admin@alphaops.ai)" $(PYTHON) -m apps.cli ingest-recent --tickers "$(TICKERS)"
 
-# Build Vector Index (RAG)
+reconcile_index:
+	@echo "Reconciling Index for $(DATE)"
+	$(PYTHON) -m apps.cli reconcile-index --date $(DATE)
+
 build_index:
-	SEC_USER_AGENT="AlphaOps/0.2 (test@example.com)" $(PYTHON) -m apps.cli ingest-rag --tickers $(TICKERS)
+	$(PYTHON) -m apps.cli build-rag-index
 
-# Compute Features (DS)
 compute_ds:
-	SEC_USER_AGENT="AlphaOps/0.2 (test@example.com)" $(PYTHON) -m apps.cli compute-event-study --tickers $(TICKERS)
+	$(PYTHON) -m apps.cli compute-event-study
 
-compute_risk:
-	SEC_USER_AGENT="AlphaOps/0.2 (test@example.com)" $(PYTHON) -m apps.cli compute-risk --tickers $(TICKERS)
-
-# GraphRAG
-build_graph:
-	SEC_USER_AGENT="AlphaOps/0.2 (test@example.com)" $(PYTHON) -m apps.cli build-graph --tickers $(TICKERS)
-
-# Placeholder for Eval
 eval:
-	@echo "Running Eval..."
-	SEC_USER_AGENT="AlphaOps/0.2 (test@example.com)" $(PYTHON) -m eval.ragas.pipeline
-	# $(PYTHON) -m eval.run
+	$(PYTHON) -m apps.cli run-eval
 
 test:
 	$(PYTHON) -m pytest tests -v
 
-serve_llm:
-	$(PYTHON) -m mlx_lm.server --model mlx-community/Llama-3.2-3B-Instruct-4bit --port 8080
-
-run_ui:
-	$(VENV)/bin/streamlit run apps/streamlit_app.py
-
 demo:
-	@echo ">>> Running Golden Path Demo <<<"
-	@echo "1. Ingesting Market Data (AAPL, MSFT, NVDA)..."
-	SEC_USER_AGENT="AlphaOps/0.2 (test@example.com)" $(PYTHON) -m apps.cli ingest-market --tickers AAPL,MSFT,NVDA
-	@echo "2. Building Features..."
-	SEC_USER_AGENT="AlphaOps/0.2 (test@example.com)" $(PYTHON) -m apps.cli build-features --tickers AAPL,MSFT,NVDA
-	@echo "3. Ingesting XBRL (Simulation)..."
-	SEC_USER_AGENT="AlphaOps/0.2 (test@example.com)" $(PYTHON) -m apps.cli ingest-xbrl --tickers AAPL,MSFT,NVDA
-	@echo "4. Checking Data..."
-	$(PYTHON) check_data.py
-	@echo ">>> Demo Ready. Run 'make run_ui' to interact. <<<"
+	@echo ">>> DEMO START <<<"
+	make up
+	make ingest_recent TICKERS="$(TICKERS)"
+	make build_index
+	make compute_ds
+	@echo ">>> DEMO COMPLETE <<<"
+

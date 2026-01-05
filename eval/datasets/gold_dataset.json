@@ -1,17 +1,18 @@
 [
     {
-        "question": "What are the risk factors for Apple?",
-        "ground_truth": "Risks include supply chain issues, competition, and regulatory changes.",
-        "type": "rag"
+        "question": "What was the revenue of Apple in 2023?",
+        "ground_truth": "Apple's revenue in 2023 was $383.29 billion.",
+        "retrieved_contexts": [
+            "Apple Inc. reported annual revenue of $383.29 billion for the fiscal year 2023."
+        ],
+        "answer": "Apple's revenue in 2023 was $383.29 billion."
     },
     {
-        "question": "Who is the CEO of Apple?",
-        "ground_truth": "Tim Cook is the CEO.",
-        "type": "graph"
-    },
-    {
-        "question": "What is the Cumulative Abnormal Return for AAPL recently?",
-        "ground_truth": "The CAR is positive.",
-        "type": "ds"
+        "question": "Who is the CEO of Microsoft?",
+        "ground_truth": "Satya Nadella is the CEO of Microsoft.",
+        "retrieved_contexts": [
+            "Satya Nadella has served as the CEO of Microsoft since 2014."
+        ],
+        "answer": "Satya Nadella."
     }
 ]

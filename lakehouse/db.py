@@ -15,8 +15,13 @@ class Database:
     def get_connection(self) -> duckdb.DuckDBPyConnection:
         """
         Returns a DuckDB connection. 
-        Note: DuckDB local files often support single-writer, multiple-reader.
+        Supports local file or MotherDuck (md:) if token provided.
         """
+        if self.settings.MOTHERDUCK_TOKEN:
+            # Connect to MotherDuck
+            # We assume edgar_alphaops database
+            return duckdb.connect(f"md:edgar_alphaops?motherduck_token={self.settings.MOTHERDUCK_TOKEN}")
+        
         return duckdb.connect(str(self.db_path))
 
     def init_schema(self) -> None:

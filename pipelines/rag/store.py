@@ -9,7 +9,16 @@ settings = get_settings()
 
 class VectorBooster:
     def __init__(self, collection_name: str = "sec_filings", embedding_dim: int = 384):
-        self.client = QdrantClient(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
+        if settings.QDRANT_API_KEY:
+            # Cloud Connection
+            self.client = QdrantClient(
+                url=settings.QDRANT_HOST, 
+                api_key=settings.QDRANT_API_KEY
+            )
+        else:
+            # Local Connection
+            self.client = QdrantClient(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
+            
         self.collection_name = collection_name
         self.embedding_dim = embedding_dim
         self._ensure_collection()

@@ -31,7 +31,7 @@ graph TD
         Processor --> Embedder["MiniLM-L6-v2"]
         Processor --> GraphExtractor["LLM Graph Extractor"]
         Embedder --> Vector["Qdrant (Vectors)"]
-        GraphExtractor --> Graph["DuckDB (Graph Tables)"]
+        GraphExtractor --> Graph["NetworkX (Knowledge Graph)"]
     end
 
     subgraph "Agentic Analyst"
@@ -46,23 +46,38 @@ graph TD
         Agent -->|LLM| MLX["Local Llama 3.2"]
     end
     
-    subgraph "Evaluation & Specs"
-        Eval["RAGAS Suite"] -->|Assess| Agent
-        Eval -->|Judge| MLX
-        Observability["Phoenix Traces"] -.->|Monitor| Agent
+    subgraph "Evaluation & Observability"
+        Eval["RAGAS Runner"] -->|Assess| Agent
+        Eval -->|Metrics| Gold["Gold Dataset"]
+        Observability["Phoenix Traces"] -.->|Trace| Agent
+        Observability -.->|Log| Loki
     end
 ```
 
 ## 🛠 Tech Stack
-- **Lakehouse:** DuckDB (SQL + Parquet)
-- **Vector Store:** Qdrant
-- **Agent Orchestration:** LangGraph, LangChain
-- **GraphRAG:** NetworkX / SQL Adjacency
-- **DS Engine:** Pandas, Scipy (Regression, VaR)
-- **LLM Serving:** MLX (Local on Apple Silicon)
-- **Eval:** RAGAS (Lite)
-- **Frontend:** Streamlit
-- **Observability:** Phoenix (Tracing)
+
+### 🧠 Core AI & Agents
+- **Orchestration**: `LangGraph` (Cyclic State Graphs), `LangChain`
+- **LLM Serving (Local)**: `MLX` (Apple Silicon optimized Llama 3)
+- **LLM Serving (Cloud)**: `Groq` (Planned for Sprint M4)
+- **RAG**: Hybrid (Vector + Knowledge Graph)
+- **Embeddings**: `sentence-transformers/all-MiniLM-L6-v2`
+
+### 💾 Data & Storage (Hybrid)
+- **Lakehouse (SQL)**: `DuckDB` (Local) / `MotherDuck` (Cloud)
+- **Vector Store**: `Qdrant` (Local Docker) / `Qdrant Cloud`
+- **Graph Store**: `DuckDB` (Adjacency Lists) + `NetworkX`
+
+### 📊 Data Science Engine
+- **Event Studies**: `scipy.stats`, `statsmodels` (OLS Regression)
+- **Risk Models**: `numpy` (VaR), `pandas` (TimeSeries)
+- **Sources**: SEC EDGAR (RSS/API), Yahoo Finance (`yfinance`)
+
+### 🛡 Ops & Observability
+- **Evaluation**: `RAGAS` (LLM-as-a-judge pipeline)
+- **Tracing**: `Langfuse` (Production), `Arize Phoenix` (Local Dev)
+- **Infrastructure**: Docker Compose, GitHub Actions
+- **Frontend**: Streamlit
 
 ## 🏃 Quick Start
 
@@ -122,11 +137,13 @@ make run_ui
 # Access at http://localhost:8501
 ```
 
-## 🧪 Evaluation
-Run the RAGAS-based evaluation suite on the Gold Dataset:
+## 🔭 Observability & Evaluation
+- **Tracing**: Access Phoenix UI at `http://localhost:6006` to see full trace of every LLM call.
+- **Evaluation**: Run the RAGAS suite against the Gold Dataset:
 ```bash
 make eval
-# Output: artifacts/eval/report.json
+# Output: artifacts/eval/report.csv
+# Note: Requires OPENAI_API_KEY for Ragas metrics.
 ```
 
 ## 📂 Project Structure
@@ -134,8 +151,8 @@ make eval
 /apps          # CLI and Streamlit UI
 /agents        # LangGraph Agent logic
 /ds            # Data Science Engines (Event Study, Risk)
-/rag           # RAG Pipelines (Vector, GraphRAG)
-/pipelines     # Ingestion (SEC, Market)
+/rag           # RAG Pipelines (Vector)
+/pipelines     # Ingestion (SEC, Market, Graph)
 /lakehouse     # DuckDB schemas
 /eval          # Evaluation Datasets & Pipelines
 /observability # Tracing Config

@@ -49,8 +49,20 @@ def agent_node(state: AgentState):
         Always cite your sources efficiently.
         """)
         messages = [system_prompt] + messages
+    
+    # Trace with Langfuse if configured
+    callbacks = []
+    if settings.LANGFUSE_PUBLIC_KEY and settings.LANGFUSE_SECRET_KEY:
+        try:
+            from langfuse.langchain import CallbackHandler
+            langfuse_handler = CallbackHandler(
+                public_key=settings.LANGFUSE_PUBLIC_KEY
+            )
+            callbacks.append(langfuse_handler)
+        except ImportError:
+            pass
         
-    response = llm_with_tools.invoke(messages)
+    response = llm_with_tools.invoke(messages, config={"callbacks": callbacks})
     
     # Patch: If local LLM returns raw JSON string instead of tool_calls
     import re

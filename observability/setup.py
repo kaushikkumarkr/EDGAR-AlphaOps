@@ -11,7 +11,7 @@ def setup_observability() -> None:
     try:
         # Register the Phoenix OTEL collector
         register(
-            collector_endpoint=settings.PHOENIX_COLLECTOR_ENDPOINT,
+            endpoint=settings.PHOENIX_COLLECTOR_ENDPOINT,
             project_name=settings.PROJECT_NAME
         )
         

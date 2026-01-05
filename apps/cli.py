@@ -15,6 +15,7 @@ def ingest_rss_loop():
     
     while True:
         try:
+            logging.info("Running RSS Watcher Cycle...")
             watcher.run_cycle()
             logging.info("Cycle complete. Sleeping for 10 minutes...")
             time.sleep(600) # 10 minutes
@@ -23,7 +24,7 @@ def ingest_rss_loop():
             break
         except Exception as e:
             logging.error(f"Error in ingest cycle: {e}")
-            time.sleep(60)
+            time.sleep(60) # Retry faster on error
 
 def main():
     setup_logging()
@@ -255,6 +256,10 @@ def main():
             else:
                 logging.warning(f"Primary doc not found for {t} ({accession})")
         conn.close()
+
+    elif command == "run-eval":
+        from eval.run_eval import run_eval
+        run_eval()
 
     else:
         print(f"Unknown command: {command}")

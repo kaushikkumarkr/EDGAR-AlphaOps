@@ -1,26 +1,162 @@
 services:
+  # --- INFRASTRUCTURE ACROSS ALL SPRINTS ---
+
+  # 1. Metadata DB (Postgres)
+  postgres:
+    image: postgres:15-alpine
+    container_name: edgar-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-edgar_ops}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # 2. Object Storage (MinIO)
+  minio:
+    image: minio/minio
+    container_name: edgar-minio
+    ports:
+      - "9000:9000" # API
+      - "9001:9001" # Console
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # 3. Queue/Cache (Valkey - Redis Compatible)
+  valkey:
+    image: valkey/valkey:7.2
+    container_name: edgar-valkey
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: [ "CMD", "valkey-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  # 4. Vector DB (Qdrant)
   qdrant:
     image: qdrant/qdrant:latest
     container_name: edgar-qdrant
     ports:
       - "6333:6333"
-      - "6334:6334"
     volumes:
-      - ./data/qdrant_storage:/qdrant/storage:z
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:6333/readyz || exit 1" ]
     restart: unless-stopped
 
+  # 5. Observability (Phoenix)
   phoenix:
     image: arizephoenix/phoenix:latest
     container_name: edgar-phoenix
     ports:
-      - "6006:6006" # Phoenix UI
+      - "6006:6006" # UI
       - "4317:4317" # OTLP gRPC
       - "4318:4318" # OTLP HTTP
     environment:
       - PHOENIX_PORT=6006
     restart: unless-stopped
 
-  # Placeholder for DB if needed, but we are using DuckDB (local file)
-  # postgres:
-  #   image: postgres:15-alpine
-  #   ...
+  # 5b. Logs (Loki + Promtail)
+  loki:
+    image: grafana/loki:latest
+    container_name: edgar-loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: edgar-promtail
+    volumes:
+      - /var/log:/var/log
+      - ./docker-config/promtail-config.yaml:/etc/promtail/config.yaml
+    command: -config.file=/etc/promtail/config.yaml
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  # --- APPLICATION SERVICES ---
+
+  # 6. API Layout (FastAPI)
+  api:
+    build: .
+    container_name: edgar-api
+    command: uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      - POSTGRES_HOST=postgres
+      - REDIS_HOST=valkey
+      - MINIO_ENDPOINT=minio:9000
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - .:/app # Hot reload
+
+  # 7. Async Worker (Celery)
+  worker:
+    build: .
+    container_name: edgar-worker
+    command: celery -A pipelines.tasks worker --loglevel=info
+    env_file: .env
+    environment:
+      - POSTGRES_HOST=postgres
+      - REDIS_HOST=valkey
+      - MINIO_ENDPOINT=minio:9000
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - C_FORCE_ROOT=true # Inside container
+    depends_on:
+      valkey:
+        condition: service_healthy
+    volumes:
+      - .:/app
+
+volumes:
+  postgres_data:
+  minio_data:
+  valkey_data:
+  qdrant_data:
+
+    # vLLM Service (Production AI) - Uncomment for Linux/GPU environments
+    # vllm:
+    #   image: vllm/vllm-openai:latest
+    #   runtime: nvidia
+    #   environment:
+    #     - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
+    #   ports:
+    #     - "8000:8000"
+    #   command: --model meta-llama/Meta-Llama-3-8B-Instruct --dtype auto --api-key ${VLLM_API_KEY}
+

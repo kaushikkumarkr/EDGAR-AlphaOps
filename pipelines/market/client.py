@@ -65,7 +65,13 @@ class MarketDataFetcher:
             df["ticker"] = ticker
             
             # Select schema columns explicitly to ensure order/existence
-            final_df = df[["ticker", "date", "open", "high", "low", "close", "volume", "adjusted_close"]].copy()
+            # Compute Returns & Volatility
+            df = df.sort_values("date")
+            df["daily_return"] = df["adjusted_close"].pct_change()
+            # Annualized Volatility (30-day rolling std dev * sqrt(252))
+            df["volatility_30d"] = df["daily_return"].rolling(window=30).std() * (252 ** 0.5)
+
+            final_df = df[["ticker", "date", "open", "high", "low", "close", "volume", "adjusted_close", "daily_return", "volatility_30d"]].copy()
             
             self._save_prices(final_df)
             
@@ -78,15 +84,17 @@ class MarketDataFetcher:
             conn.register("df_prices", df)
             # Insert or Replace
             conn.execute("""
-                INSERT INTO prices (ticker, date, open, high, low, close, volume, adjusted_close)
-                SELECT ticker, date, open, high, low, close, volume, adjusted_close FROM df_prices
+                INSERT INTO prices (ticker, date, open, high, low, close, volume, adjusted_close, daily_return, volatility_30d)
+                SELECT ticker, date, open, high, low, close, volume, adjusted_close, daily_return, volatility_30d FROM df_prices
                 ON CONFLICT (ticker, date) DO UPDATE SET
                     close = EXCLUDED.close,
                     adjusted_close = EXCLUDED.adjusted_close,
                     volume = EXCLUDED.volume,
                     open = EXCLUDED.open,
                     high = EXCLUDED.high,
-                    low = EXCLUDED.low
+                    low = EXCLUDED.low,
+                    daily_return = EXCLUDED.daily_return,
+                    volatility_30d = EXCLUDED.volatility_30d
             """)
             logging.info(f"Saved {len(df)} rows for {df['ticker'].iloc[0]}")
         finally:

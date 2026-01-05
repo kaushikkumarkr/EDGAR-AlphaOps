@@ -41,3 +41,13 @@ def setup_logging() -> None:
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     logging.info("Logging initialized", extra={"project": settings.PROJECT_NAME})
+
+    # Phoenix / OpenTelemetry Setup
+    try:
+        from phoenix.trace.langchain import LangChainInstrumentor
+        LangChainInstrumentor().instrument()
+        logging.info("Phoenix Tracing Instrumented")
+    except ImportError:
+        logging.warning("Phoenix not found, skipping instrumentation")
+    except Exception as e:
+        logging.warning(f"Phoenix instrumentation failed: {e}")

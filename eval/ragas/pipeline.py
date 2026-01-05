@@ -71,17 +71,29 @@ class Evaluator:
             Ground Truth: {ground_truth}
             Student Answer: {answer}
             
-            Return JSON: { "score": 0.0 to 1.0, "reason": "short explanation" }
+            Return JSON: {{ "score": 0.0 to 1.0, "reason": "short explanation" }}
             """)
         ])
         
         try:
+            # Trace Judge with Langfuse if configured
+            callbacks = []
+            if settings.LANGFUSE_PUBLIC_KEY and settings.LANGFUSE_SECRET_KEY:
+                try:
+                    from langfuse.langchain import CallbackHandler
+                    langfuse_handler = CallbackHandler(
+                        public_key=settings.LANGFUSE_PUBLIC_KEY
+                    )
+                    callbacks.append(langfuse_handler)
+                except ImportError:
+                    pass
+
             chain = prompt | self.judge_llm
             res = chain.invoke({
                 "question": question, 
                 "ground_truth": ground_truth, 
                 "answer": answer
-            })
+            }, config={"callbacks": callbacks})
             content = res.content
             
             # Clean JSON

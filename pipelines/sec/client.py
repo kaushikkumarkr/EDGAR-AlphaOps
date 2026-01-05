@@ -1,8 +1,9 @@
-import httpx
 import time
+import redis
+import requests
+import logging
 from tenacity import retry, stop_after_attempt, wait_exponential
 from config import get_settings
-import logging
 from typing import Optional, Dict, Any
 
 # Global Rate Limiter
@@ -22,36 +23,79 @@ class RateLimiter:
             time.sleep(self.interval - elapsed)
         self.last_request_time = time.time()
 
-global_limiter = RateLimiter(requests_per_second=10)
+
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+
+class GlobalRateLimiter:
+    """
+    Redis-backed Token Bucket for Global Rate Limiting (10 req/sec strict).
+    Uses a rolling window or per-second counter key.
+    """
+    def __init__(self, key="sec_global_limit", rate=10):
+        self.redis = redis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT)
+        self.key = key
+        self.rate = rate
+
+    def acquire(self):
+        """
+        Acquire a token. Blocks until available.
+        Strict approach: 1 request per 0.1s bucket.
+        """
+        while True:
+            try:
+                # 1. Get current decisecond bucket (100ms)
+                now = time.time()
+                bucket = int(now * 10) 
+                bucket_key = f"{self.key}:{bucket}"
+                
+                # 2. Increment
+                current_count = self.redis.incr(bucket_key)
+                
+                # 3. Set expiry (1 sec is plenty for 0.1s bucket)
+                if current_count == 1:
+                    self.redis.expire(bucket_key, 1)
+                
+                # 4. Check limit (1 per 100ms = 10 per sec)
+                if current_count <= 1:
+                    return
+                else:
+                    # Sleep until next decisecond
+                    next_bucket_time = (bucket + 1) / 10.0
+                    sleep_time = next_bucket_time - time.time() + 0.01
+                    if sleep_time > 0:
+                        time.sleep(sleep_time)
+            except redis.RedisError as e:
+                logger.error(f"Redis error in RateLimiter: {e}")
+                time.sleep(0.1)
 
 class SecClient:
-    def __init__(self) -> None:
-        self.settings = get_settings()
-        if "example.com" in self.settings.SEC_USER_AGENT:
-             logging.warning("⚠️  Using default SEC User-Agent. Please update .env with your actual email for compliance!")
-        
-        self.headers = {
-            "User-Agent": self.settings.SEC_USER_AGENT,
-            "Accept-Encoding": "gzip, deflate",
-        }
-        self.client = httpx.Client(headers=self.headers, timeout=30.0, follow_redirects=True)
+    def __init__(self):
+        self.limiter = GlobalRateLimiter()
+        self.headers = {"User-Agent": settings.SEC_USER_AGENT, "Accept-Encoding": "gzip, deflate"}
+        if "example.com" in settings.SEC_USER_AGENT:
+             logger.warning("Using default/example User-Agent! Please update SEC_USER_AGENT in .env")
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    def _get(self, url: str) -> httpx.Response:
-        """
-        Internal GET with rate limiting and retries.
-        """
-        global_limiter.wait()
-        response = self.client.get(url)
+    @retry(
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=2, max=60),
+        reraise=True
+    )
+    def _get(self, url: str) -> requests.Response:
+        self.limiter.acquire()
+        response = requests.get(url, headers=self.headers, timeout=20)
         response.raise_for_status()
         return response
+
+    def get(self, url: str) -> requests.Response:
+        """Public wrapper for _get."""
+        return self._get(url)
 
     def get_filing_html(self, url: str) -> str:
         """
         Download filing text/html.
         """
-        # SEC URLs often are http but redirect to https.
-        # Ensure url is using https
         if url.startswith("http://"):
             url = url.replace("http://", "https://", 1)
             
@@ -59,11 +103,22 @@ class SecClient:
         resp = self._get(url)
         return resp.text
 
+    def get_filing_bytes(self, url: str) -> bytes:
+        """Download binary content."""
+        if url.startswith("http://"):
+            url = url.replace("http://", "https://", 1)
+        logging.info(f"Downloading binary: {url}")
+        resp = self._get(url)
+        return resp.content
+
     def get_rss_feed(self, count: int = 100) -> bytes:
         """
-        Fetch the RSS feed.
+        Fetch the SEC RSS feed (Atom).
         """
         url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=&company=&dateb=&owner=include&start=0&count={count}&output=atom"
         logging.info("Polling SEC RSS feed...")
+        # RSS might not follow strict 10/s limits the same way as archives? 
+        # But safely apply same limiter.
         resp = self._get(url)
         return resp.content
+
